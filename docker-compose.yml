@@ -1,0 +1,86 @@
+version: '3.3'
+services:
+  elasticsearch:
+    image: 10.210.16.204:8084/elasticsearch:5.3.0
+    ports:
+     - 9200:9200
+    networks:
+     - default
+    logging:
+      driver: json-file
+  fluentd:
+    image: 10.210.16.204:8084/efk_fluentd:latest
+    ports:
+     - 24224:24224
+     - 24224:24224/udp
+    volumes:
+     - /data/efk/fluentd/conf:/fluentd/etc
+    networks:
+     - default
+    logging:
+      driver: json-file
+  kibana:
+    image: 10.210.16.204:8084/kibana:5.3.0
+    ports:
+     - 5601:5601
+    networks:
+     - default
+    logging:
+      driver: json-file
+  web:
+    image: 10.210.16.204:8084/httpd
+    networks:
+     - default
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        tag: httpd.access
+  mongoconnector:
+    image: 10.210.16.204:8084/mongo-connector
+    links:
+     - elasticsearch
+     - mongodb-primary
+     - mongodb-secondary
+     - mongodb-arbiter
+    command: mongo-connector -m mongodb-primary:27018 -t elasticsearch:9200 -d elastic_doc_manager
+  mongodb-primary:
+    image: '10.210.16.204:8084/bitnami-mongodb'
+    ports:
+      - "27018:27018"
+    environment:
+      - MONGODB_REPLICA_SET_MODE=primary
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-primary
+      - MONGODB_REPLICA_SET_NAME=app-name-dev
+      - MONGODB_PORT_NUMBER=27018
+  mongodb-secondary:
+    image: '10.210.16.204:8084/bitnami-mongodb'
+    ports:
+      - "27019:27019"
+    depends_on:
+      - mongodb-primary
+    environment:
+      - MONGODB_REPLICA_SET_MODE=secondary
+      - MONGODB_PRIMARY_HOST=mongodb-primary
+      - MONGODB_PRIMARY_PORT_NUMBER=27018
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-secondary
+      - MONGODB_REPLICA_SET_NAME=app-name-dev
+      - MONGODB_PORT_NUMBER=27019
+  mongodb-arbiter:
+    image: '10.210.16.204:8084/bitnami-mongodb'
+    ports:
+      - "27020:27020"
+    depends_on:
+      - mongodb-primary
+      - mongodb-secondary
+    environment:
+      - MONGODB_REPLICA_SET_MODE=arbiter
+      - MONGODB_PRIMARY_HOST=mongodb-primary
+      - MONGODB_PRIMARY_PORT_NUMBER=27018
+      - MONGODB_ADVERTISED_HOSTNAME=mongodb-arbiter
+      - MONGODB_REPLICA_SET_NAME=app-name-dev
+      - MONGODB_PORT_NUMBER=27020
+
+networks:
+  default:
+    driver: overlay
